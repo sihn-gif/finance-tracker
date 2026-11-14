@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sổ chi tiêu</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+<style>
+:root{--bg:#f3f5f2;--card:#fff;--text:#1c2a24;--muted:#5f6f67;--line:#dde3de;--accent:#1f6f50;--warn:#a85d00;--bad:#b3261e;--ok-bg:#e3f2ea;--bad-bg:#fbe9e7}
+@media (prefers-color-scheme:dark){:root{--bg:#121816;--card:#1a2320;--text:#e6ede9;--muted:#9baba3;--line:#2b3832;--accent:#5fcf9e;--warn:#f0b35a;--bad:#ff8a80;--ok-bg:#1d3a2d;--bad-bg:#40221f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 Georgia,"Times New Roman",serif}
+main{max-width:960px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.8rem;margin:0}h2{font-size:1.15rem;margin:0 0 12px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:12px;margin-bottom:20px}
+section{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.grid section{margin:0}
+.sum{display:flex;gap:24px;flex-wrap:wrap}.sum b{display:block;font-size:1.4rem}
+.sum span{color:var(--muted);font-size:.9rem}
+label{display:block;font-size:.9rem;color:var(--muted);margin-top:8px}
+input,select,button{font:inherit;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--text);width:100%}
+button{background:var(--accent);color:#fff;border:0;margin-top:12px;cursor:pointer;width:auto;padding:8px 16px}
+button.link{background:none;color:var(--bad);margin:0;padding:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.msg{padding:8px 12px;border-radius:4px;margin-bottom:12px}
+.msg.ok{background:var(--ok-bg)}.msg.error{background:var(--bad-bg);color:var(--bad)}
+.bar{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:4px 0 12px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.warning i{background:var(--warn)}.exceeded i{background:var(--bad)}
+.tag{font-size:.85rem}.warning .tag{color:var(--warn)}.exceeded .tag{color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);font-size:.95rem}
+td.num{text-align:right;white-space:nowrap}.income{color:var(--accent)}
+.scroll{overflow-x:auto}
+.empty{color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Sổ chi tiêu</h1>
+  <form method="get"><label for="m" style="margin:0">Tháng</label>
+    <input id="m" type="month" name="month" value="{{ month }}" onchange="this.form.submit()"></form>
+</header>
+
+{% for cat, text in get_flashed_messages(with_categories=true) %}<div class="msg {{ cat }}" role="status">{{ text }}</div>{% endfor %}
+
+<section>
+  <div class="sum">
+    <div><span>Thu</span><b class="income">{{ summary.income|vnd }}</b></div>
+    <div><span>Chi</span><b>{{ summary.expense|vnd }}</b></div>
+    <div><span>Còn lại</span><b>{{ summary.balance|vnd }}</b></div>
+  </div>
+</section>
+
+<div class="grid">
+<section>
+  <h2>Chi tiêu theo danh mục</h2>
+  {% if chart_labels %}<canvas id="chart" height="220" aria-label="Biểu đồ chi tiêu theo danh mục"></canvas>
+  {% else %}<p class="empty">Chưa có khoản chi nào trong tháng này. Thêm giao dịch để xem biểu đồ.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Ngân sách tháng</h2>
+  {% for b in budgets %}
+  <div class="{{ b.level }}">
+    <div>{{ b.category }}: {{ b.spent|vnd }} / {{ b.limit|vnd }} <span class="tag">
+      {% if b.level == 'exceeded' %}Đã vượt ngân sách{% elif b.level == 'warning' %}Sắp hết ngân sách ({{ b.percent }}%){% endif %}</span></div>
+    <div class="bar"><i style="width:{{ [b.percent,100]|min }}%"></i></div>
+  </div>
+  {% else %}<p class="empty">Chưa đặt ngân sách cho tháng này.</p>{% endfor %}
+  <form method="post" action="{{ url_for('main.create_budget') }}">
+    <input type="hidden" name="month" value="{{ month }}">
+    <label for="bc">Danh mục</label>
+    <select id="bc" name="category_id">{% for c in categories if c.type == 'expense' %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+    <label for="bl">Hạn mức (₫)</label><input id="bl" name="limit" type="number" min="1" required>
+    <button>Lưu ngân sách</button>
+  </form>
+</section>
+</div>
+
+<section style="margin-top:16px">
+  <h2>Thêm giao dịch</h2>
+  <form method="post" action="{{ url_for('main.create_transaction') }}">
+    <div class="grid">
+      <div><label for="a">Số tiền (₫)</label><input id="a" name="amount" type="number" min="1" required></div>
+      <div><label for="d">Ngày</label><input id="d" name="date" type="date" value="{{ today }}" required></div>
+      <div><label for="c">Danh mục</label>
+        <select id="c" name="category_id">{% for c in categories %}<option value="{{ c.id }}">{{ c.name }} ({{ 'thu' if c.type == 'income' else 'chi' }})</option>{% endfor %}</select></div>
+      <div><label for="n">Ghi chú</label><input id="n" name="note" maxlength="200"></div>
+    </div>
+    <button>Thêm giao dịch</button>
+  </form>
+</section>
+
+<section>
+  <h2>Giao dịch trong tháng</h2>
+  {% if transactions %}<div class="scroll"><table>
+    <tr><th>Ngày</th><th>Danh mục</th><th>Ghi chú</th><th class="num">Số tiền</th><th></th></tr>
+    {% for t in transactions %}<tr>
+      <td>{{ t.date.strftime('%d/%m/%Y') }}</td><td>{{ t.category.name }}</td><td>{{ t.note }}</td>
+      <td class="num {{ 'income' if t.category.type == 'income' }}">{{ '+' if t.category.type == 'income' else '-' }}{{ t.amount|vnd }}</td>
+      <td><form method="post" action="{{ url_for('main.delete_transaction', transaction_id=t.id) }}">
+        <input type="hidden" name="month" value="{{ month }}"><button class="link">Xóa</button></form></td>
+    </tr>{% endfor %}
+  </table></div>
+  {% else %}<p class="empty">Chưa có giao dịch nào trong tháng này.</p>{% endif %}
+</section>
+</main>
+
+{% if chart_labels %}<script>
+new Chart(document.getElementById('chart'), {
+  type: 'doughnut',
+  data: {labels: {{ chart_labels|tojson }}, datasets: [{data: {{ chart_values|tojson }},
+    backgroundColor: ['#1f6f50','#c98a1b','#3b6ea5','#9b4f7a','#7a8f2e','#b3563e','#5c6bc0','#8a8a8a']}]},
+  options: {plugins: {legend: {position: 'bottom'}}}
+});
+</script>{% endif %}
+</body>
+</html>
